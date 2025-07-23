@@ -1,0 +1,489 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Torneio Mata-Mata com Categorias + Supabase</title>
+  <style>
+    body {
+      margin: 0;
+      background: #111;
+      color: #eee;
+      font-family: sans-serif;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+    }
+    h1 {
+      text-align: center;
+      padding: 10px;
+      margin: 0;
+    }
+    #tabs {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      background: #222;
+      padding: 10px;
+    }
+    .tab-btn {
+      background: #333;
+      color: #eee;
+      padding: 6px 12px;
+      border: none;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .tab-btn.active {
+      background: #0af;
+    }
+    #content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+    }
+    .category-panel {
+      display: none;
+    }
+    .category-panel.active {
+      display: block;
+    }
+    .dropzone {
+      border: 2px dashed #555;
+      padding: 20px;
+      text-align: center;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+    .dropzone.dragover {
+      border-color: #0af;
+      background: #222;
+    }
+    .image-list {
+      max-height: 200px;
+      overflow-y: auto;
+      background: #1a1a1a;
+      padding: 10px;
+      border-radius: 6px;
+    }
+    .image-entry {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 6px;
+    }
+    .image-entry img {
+      width: 40px;
+      height: 40px;
+      object-fit: cover;
+    }
+    .delete-btn {
+      background: #f44;
+      border: none;
+      color: white;
+      padding: 4px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    #startBtn, #backToLobbyBtn {
+      margin-top: 15px;
+      padding: 12px 24px;
+      background: #0af;
+      color: #fff;
+      border: none;
+      font-size: 16px;
+      cursor: pointer;
+      border-radius: 6px;
+    }
+    #tournament {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    #match {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      width: 100vw;
+      height: 70vh;
+    }
+    .img-option {
+      width: 48vw;
+      max-height: 90vh;
+      object-fit: contain;
+      cursor: pointer;
+    }
+    #roundIndicator {
+      font-size: 20px;
+      color: #0af;
+      margin-bottom: 10px;
+    }
+    #winner {
+      font-size: 24px;
+      margin: 20px;
+      color: #0af;
+    }
+    #scoreboard {
+      margin-top: 20px;
+      background: #000;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 600px;
+      width: 100%;
+    }
+    #scoreboard ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #scoreboard li {
+      padding: 5px 0;
+      border-bottom: 1px solid #222;
+    }
+  </style>
+</head>
+<body>
+  <h1>Torneio Mata-Mata com Categorias + Supabase</h1>
+  <div id="tabs"></div>
+  <div id="content"></div>
+
+  <div id="tournament">
+    <div id="roundIndicator"></div>
+    <div id="match"></div>
+    <div id="winner"></div>
+    <div id="scoreboard">
+      <h2>Placar Final das Categorias</h2>
+      <ul id="scoreList"></ul>
+    </div>
+    <button id="backToLobbyBtn">Voltar ao Lobby</button>
+  </div>
+
+  <!-- Supabase SDK -->
+  <script type="module">
+    import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm'
+
+    const SUPABASE_URL = 'https://rjirkdrnmbkesucbrbmw.supabase.co'
+    const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJqaXJrZHJubWJrZXN1Y2JyYm13Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTMyMzY5MjksImV4cCI6MjA2ODgxMjkyOX0.UWti0FknkA5lbOz6a3zh8fEiHAgFhT86a9ddzgxUW9A'
+
+    const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+
+    const categoryNames = [
+      "milk_g0re", "Ratty", "caties", "nico", "nora", "alice delish", "soogsx", "winnie",
+      "cinnannoe", "laurenxburch", "valkcy", "Alina Becker", "sneesnaw", "meowri", "tia", "EmfoxPng"
+    ];
+    const NUM_CATEGORIES = categoryNames.length;
+    const MAX_IMAGES_PER_CATEGORY = 64;
+
+    const tabs = document.getElementById("tabs");
+    const content = document.getElementById("content");
+    const tournament = document.getElementById("tournament");
+    const roundIndicator = document.getElementById("roundIndicator");
+    const matchDiv = document.getElementById("match");
+    const winnerEl = document.getElementById("winner");
+    const scoreList = document.getElementById("scoreList");
+    const backToLobbyBtn = document.getElementById("backToLobbyBtn");
+
+    // Dados locais
+    const categories = [];
+    const categoryScores = new Array(NUM_CATEGORIES).fill(0);
+    let allImages = [];
+    let currentRound = [];
+    let nextRound = [];
+    let currentMatchIndex = 0;
+    let totalMatchesInRound = 0;
+    let currentStage = 1;
+
+    // Função para criar abas e painéis
+    function createTabsAndPanels() {
+      categoryNames.forEach((name, i) => {
+        // Botão da aba
+        const btn = document.createElement("button");
+        btn.className = "tab-btn";
+        btn.textContent = name;
+        btn.dataset.index = i;
+        if(i === 0) btn.classList.add("active");
+        tabs.appendChild(btn);
+
+        // Painel da categoria
+        const panel = document.createElement("div");
+        panel.className = "category-panel";
+        if(i === 0) panel.classList.add("active");
+        panel.dataset.index = i;
+
+        // Zona de drag & drop
+        const dropzone = document.createElement("div");
+        dropzone.className = "dropzone";
+        dropzone.textContent = `Arraste até ${MAX_IMAGES_PER_CATEGORY} imagens para '${name}' ou clique aqui.`;
+        const fileInput = document.createElement("input");
+        fileInput.type = "file";
+        fileInput.accept = "image/*";
+        fileInput.multiple = true;
+        fileInput.style.display = "none";
+
+        // Lista das imagens na categoria
+        const imageList = document.createElement("div");
+        imageList.className = "image-list";
+
+        panel.appendChild(dropzone);
+        panel.appendChild(fileInput);
+        panel.appendChild(imageList);
+        content.appendChild(panel);
+
+        categories.push({ images: [], dropzone, fileInput, imageList });
+
+        // Eventos drag & drop
+        dropzone.addEventListener("dragover", e => { e.preventDefault(); dropzone.classList.add("dragover"); });
+        dropzone.addEventListener("dragleave", e => { e.preventDefault(); dropzone.classList.remove("dragover"); });
+        dropzone.addEventListener("drop", e => {
+          e.preventDefault();
+          dropzone.classList.remove("dragover");
+          handleFiles(e.dataTransfer.files, i);
+        });
+        dropzone.addEventListener("click", () => fileInput.click());
+        fileInput.addEventListener("change", e => {
+          handleFiles(e.target.files, i);
+          fileInput.value = null;
+        });
+      });
+    }
+
+    // Trocar abas
+    tabs.addEventListener("click", e => {
+      if(e.target.classList.contains("tab-btn")) {
+        const idx = parseInt(e.target.dataset.index);
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        e.target.classList.add("active");
+        document.querySelectorAll(".category-panel").forEach(p => p.classList.remove("active"));
+        document.querySelector(`.category-panel[data-index='${idx}']`).classList.add("active");
+      }
+    });
+
+    // Botão iniciar torneio
+    const startBtn = document.createElement("button");
+    startBtn.id = "startBtn";
+    startBtn.textContent = "Iniciar Torneio Geral";
+    content.appendChild(startBtn);
+
+    startBtn.addEventListener("click", () => {
+      allImages = [];
+      categoryScores.fill(0);
+
+      // Montar array geral com imagens de todas categorias (com dados para pontuação)
+      categories.forEach((cat, idx) => {
+        cat.images.forEach(img => {
+          allImages.push({
+            src: img.src,
+            categoryIndex: idx,
+            wins: img.wins || 0,
+            path: img.path // caminho no Supabase
+          });
+        });
+      });
+
+      if(allImages.length < 2) {
+        alert("Adicione ao menos 2 imagens para iniciar!");
+        return;
+      }
+
+      shuffleArray(allImages);
+      currentRound = [...allImages];
+      nextRound = [];
+      currentMatchIndex = 0;
+      totalMatchesInRound = Math.ceil(currentRound.length / 2);
+      currentStage = 1;
+
+      content.style.display = "none";
+      tournament.style.display = "flex";
+      winnerEl.textContent = "";
+      scoreList.innerHTML = "";
+      updateRoundIndicator();
+      showNextMatch();
+    });
+
+    backToLobbyBtn.addEventListener("click", () => {
+      tournament.style.display = "none";
+      content.style.display = "block";
+    });
+
+    // Atualiza o texto da rodada
+    function updateRoundIndicator() {
+      roundIndicator.textContent = `Rodada ${currentMatchIndex + 1} de ${totalMatchesInRound}`;
+    }
+
+    // Mostra o próximo duelo
+    function showNextMatch() {
+      matchDiv.innerHTML = "";
+      if(currentRound.length === 1) {
+        const champ = currentRound[0];
+        winnerEl.textContent = `🏆 Campeã: ${categoryNames[champ.categoryIndex]}`;
+        const img = document.createElement("img");
+        img.src = champ.src;
+        img.className = "img-option";
+        matchDiv.appendChild(img);
+
+        // Mostrar placar final
+        const sortedScores = categoryScores
+          .map((score, i) => ({cat: categoryNames[i], score}))
+          .sort((a,b) => b.score - a.score);
+        scoreList.innerHTML = "";
+        sortedScores.forEach(item => {
+          const li = document.createElement("li");
+          li.textContent = `${item.cat}: ${item.score} pontos`;
+          scoreList.appendChild(li);
+        });
+        roundIndicator.textContent = "Torneio Finalizado!";
+        return;
+      }
+
+      if(currentMatchIndex >= totalMatchesInRound) {
+        currentRound = [...nextRound];
+        nextRound = [];
+        currentMatchIndex = 0;
+        totalMatchesInRound = Math.ceil(currentRound.length / 2);
+        currentStage++;
+        shuffleArray(currentRound);
+        updateRoundIndicator();
+        showNextMatch();
+        return;
+      }
+
+      // Pega 2 imagens para duelo
+      const img1 = currentRound.shift();
+      const img2 = currentRound.shift();
+
+      [img1, img2].forEach(imgObj => {
+        const img = document.createElement("img");
+        img.src = imgObj.src;
+        img.className = "img-option";
+        img.onclick = () => {
+          const finalStage = Math.ceil(Math.log2(allImages.length));
+          const points = (currentStage === finalStage) ? 20 : currentStage;
+          categoryScores[imgObj.categoryIndex] += points;
+          imgObj.wins = (imgObj.wins || 0) + 1;
+          nextRound.push(imgObj);
+          currentMatchIndex++;
+          updateRoundIndicator();
+          showNextMatch();
+        };
+        matchDiv.appendChild(img);
+      });
+    }
+
+    // Função para embaralhar array
+    function shuffleArray(array) {
+      for(let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+      }
+    }
+
+    // Upload dos arquivos para Supabase
+    async function uploadToSupabase(file, categoryIndex) {
+      try {
+        const filePath = `${categoryNames[categoryIndex]}/${Date.now()}-${file.name}`;
+        const { data, error } = await supabase.storage.from('imagens').upload(filePath, file);
+        if(error) {
+          alert('Erro no upload: ' + error.message);
+          return null;
+        }
+        const { data: urlData } = supabase.storage.from('imagens').getPublicUrl(filePath);
+        return { url: urlData.publicUrl, path: filePath };
+      } catch(e) {
+        alert('Erro no upload: ' + e.message);
+        return null;
+      }
+    }
+
+    // Deleta arquivo do Supabase
+    async function deleteFromSupabase(path) {
+      try {
+        const { error } = await supabase.storage.from('imagens').remove([path]);
+        if(error) alert('Erro ao deletar: ' + error.message);
+      } catch(e) {
+        alert('Erro ao deletar: ' + e.message);
+      }
+    }
+
+    // Lidar com arquivos adicionados na categoria
+    async function handleFiles(fileList, categoryIndex) {
+      const cat = categories[categoryIndex];
+      if(cat.images.length >= MAX_IMAGES_PER_CATEGORY) {
+        alert(`Limite de ${MAX_IMAGES_PER_CATEGORY} imagens atingido para ${categoryNames[categoryIndex]}`);
+        return;
+      }
+      const files = Array.from(fileList).slice(0, MAX_IMAGES_PER_CATEGORY - cat.images.length);
+      for(const file of files) {
+        const upload = await uploadToSupabase(file, categoryIndex);
+        if(upload) {
+          cat.images.push({ src: upload.url, wins: 0, path: upload.path });
+          updateImageList(categoryIndex);
+        }
+      }
+    }
+
+    // Atualiza a lista de imagens exibida na categoria
+    function updateImageList(categoryIndex) {
+      const cat = categories[categoryIndex];
+      const listDiv = cat.imageList;
+      listDiv.innerHTML = `<h3>${categoryNames[categoryIndex]}</h3>`;
+      cat.images.forEach((imgObj, i) => {
+        const div = document.createElement("div");
+        div.className = "image-entry";
+        div.innerHTML = `
+          <strong>${i + 1}</strong>
+          <img src="${imgObj.src}" alt="img${i + 1}" />
+          <button class="delete-btn" title="Remover imagem">X</button>
+        `;
+        const btn = div.querySelector(".delete-btn");
+        btn.onclick = async () => {
+          if(confirm("Tem certeza que quer remover essa imagem?")) {
+            await deleteFromSupabase(imgObj.path);
+            cat.images.splice(i, 1);
+            updateImageList(categoryIndex);
+          }
+        };
+        listDiv.appendChild(div);
+      });
+    }
+
+    // Carregar imagens do Supabase ao iniciar
+    async function loadImagesFromSupabase() {
+      for(let i=0; i < NUM_CATEGORIES; i++) {
+        const { data, error } = await supabase.storage.from('imagens').list(categoryNames[i], {
+          limit: MAX_IMAGES_PER_CATEGORY,
+          offset: 0,
+          sortBy: { column: 'name', order: 'asc' }
+        });
+        if(error) {
+          console.error('Erro ao listar imagens:', error);
+          continue;
+        }
+        categories[i].images = [];
+        for(const file of data) {
+          const { data: urlData } = supabase.storage.from('imagens').getPublicUrl(`${categoryNames[i]}/${file.name}`);
+          categories[i].images.push({
+            src: urlData.publicUrl,
+            wins: 0,
+            path: `${categoryNames[i]}/${file.name}`
+          });
+        }
+        updateImageList(i);
+      }
+    }
+
+    // Iniciar tudo
+    (async () => {
+      createTabsAndPanels();
+      await loadImagesFromSupabase();
+    })();
+
+    // Event back to lobby already set above
+
+  </script>
+</body>
+</html>
